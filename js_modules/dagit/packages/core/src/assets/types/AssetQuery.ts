@@ -3195,6 +3195,7 @@ export interface AssetQuery_assetOrError_Asset_definition {
   jobNames: string[];
   computeKind: string | null;
   assetKey: AssetQuery_assetOrError_Asset_definition_assetKey;
+  reconcile: boolean | null;
   metadataEntries: AssetQuery_assetOrError_Asset_definition_metadataEntries[];
   type: AssetQuery_assetOrError_Asset_definition_type | null;
 }
