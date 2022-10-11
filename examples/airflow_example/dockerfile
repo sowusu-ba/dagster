@@ -1,0 +1,8 @@
+FROM apache/airflow:2.3.3-python3.8
+# COPY requirements.txt .
+ADD ./dagster-airflow /opt/dagster-airflow
+USER root
+RUN python3 -m pip install -e /opt/dagster-airflow
+# RUN sudo apt update && sudo apt install git -y
+# RUN python3 -m pip install 'dagster-airflow @ git+https://github.com/dagster-io/dagster@master#subdirectory=python_modules/libraries/dagster-airflow'
+USER 50000
