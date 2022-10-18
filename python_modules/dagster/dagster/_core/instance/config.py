@@ -272,6 +272,10 @@ def dagster_instance_config_schema():
         "code_servers": Field(
             {"local_startup_timeout": Field(int, is_required=False)}, is_required=False
         ),
+        "secrets_loaders": Field(
+            Array(configurable_class_schema()),
+            is_required=False,
+        ),
         "retention": retention_config_schema(),
         "sensors": sensors_daemon_config(),
         "schedules": schedules_daemon_config(),

@@ -1,5 +1,5 @@
 import os
-from typing import Dict, NamedTuple, Optional, Sequence
+from typing import Dict, List, NamedTuple, Optional, Sequence
 
 import yaml
 
@@ -161,6 +161,7 @@ class InstanceRef(
             ("custom_instance_class_data", Optional[ConfigurableClassData]),
             # unified storage field
             ("storage_data", Optional[ConfigurableClassData]),
+            ("secrets_loaders_datas", Optional[List[ConfigurableClassData]]),
         ],
     )
 ):
@@ -182,6 +183,7 @@ class InstanceRef(
         schedule_storage_data: ConfigurableClassData,
         custom_instance_class_data: Optional[ConfigurableClassData] = None,
         storage_data: Optional[ConfigurableClassData] = None,
+        secrets_loaders_datas: Optional[List[ConfigurableClassData]] = None,
     ):
         return super(cls, InstanceRef).__new__(
             cls,
@@ -216,6 +218,9 @@ class InstanceRef(
                 ConfigurableClassData,
             ),
             storage_data=check.opt_inst_param(storage_data, "storage_data", ConfigurableClassData),
+            secrets_loaders_datas=check.opt_list_param(
+                secrets_loaders_datas, "secrets_loaders_datas"
+            ),
         )
 
     @staticmethod
@@ -265,6 +270,7 @@ class InstanceRef(
                 "DefaultRunLauncher",
                 yaml.dump({}),
             ),
+            "secrets_loaders": [],
             # LEGACY DEFAULTS
             "run_storage": default_run_storage_data,
             "event_log_storage": default_event_log_storage_data,
@@ -368,6 +374,11 @@ class InstanceRef(
             defaults["run_launcher"],
         )
 
+        secrets_loaders_datas = [
+            configurable_class_data(secrets_loader)
+            for secrets_loader in config_value.get("secrets_loaders", [])
+        ]
+
         settings_keys = {
             "telemetry",
             "python_logs",
@@ -391,6 +402,7 @@ class InstanceRef(
             settings=settings,
             custom_instance_class_data=custom_instance_class_data,
             storage_data=storage_data,
+            secrets_loaders_datas=secrets_loaders_datas,
         )
 
     @staticmethod
@@ -439,6 +451,14 @@ class InstanceRef(
     @property
     def run_launcher(self):
         return self.run_launcher_data.rehydrate() if self.run_launcher_data else None
+
+    @property
+    def secrets_loaders(self):
+        return (
+            [loader.rehydrate() for loader in self.secrets_loaders_datas]
+            if self.secrets_loaders_datas
+            else None
+        )
 
     @property
     def custom_instance_class(self):

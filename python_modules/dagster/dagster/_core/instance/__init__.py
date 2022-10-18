@@ -290,6 +290,7 @@ class DagsterInstance:
         scheduler: Optional["Scheduler"] = None,
         schedule_storage: Optional["ScheduleStorage"] = None,
         settings: Optional[Dict[str, Any]] = None,
+        secrets_loaders: Optional[List["SecretsLoader"]] = None,
         ref: Optional[InstanceRef] = None,
     ):
         from dagster._core.launcher import RunLauncher
@@ -330,6 +331,8 @@ class DagsterInstance:
         self._run_launcher.register_instance(self)
 
         self._settings = check.opt_dict_param(settings, "settings")
+
+        self._secrets_loaders = check.opt_list_param(secrets_loaders, "secrets_loaders")
 
         self._ref = check.opt_inst_param(ref, "ref", InstanceRef)
 
@@ -477,6 +480,7 @@ class DagsterInstance:
             run_coordinator=instance_ref.run_coordinator,
             run_launcher=instance_ref.run_launcher,
             settings=instance_ref.settings,
+            secrets_loaders=instance_ref.secrets_loaders,
             ref=instance_ref,
             **kwargs,
         )
@@ -2112,6 +2116,13 @@ class DagsterInstance:
         )
         default_tick_settings = get_default_tick_retention_settings(instigator_type)
         return get_tick_retention_settings(tick_settings, default_tick_settings)
+
+    def inject_secrets_into_environment(self, location_name: Optional[str]):
+        # Inject secrets into environment, precedence to first in the list
+        for secret_loader in reversed(self._secrets_loaders):
+            new_env = secret_loader.load_secrets(location_name)
+            for k, v in new_env.items():
+                os.environ[k] = v
 
 
 def is_dagit_telemetry_enabled(instance):

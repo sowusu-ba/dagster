@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sys
+from contextlib import ExitStack
 from typing import Any, Callable, Optional, cast
 
 import click
@@ -117,6 +118,14 @@ def _execute_run_command_body(
     run_worker_failed = 0
 
     try:
+        location_name = (
+            pipeline_run.external_pipeline_origin.location_name
+            if pipeline_run.external_pipeline_origin
+            else None
+        )
+
+        instance.inject_secrets_into_environment(location_name)
+
         for event in core_execute_run(
             recon_pipeline,
             pipeline_run,
@@ -219,6 +228,15 @@ def _resume_run_command_body(
     run_worker_failed = False
 
     try:
+
+        location_name = (
+            pipeline_run.external_pipeline_origin.location_name
+            if pipeline_run.external_pipeline_origin
+            else None
+        )
+
+        instance.inject_secrets_into_environment(location_name)
+
         for event in core_execute_run(
             recon_pipeline,
             pipeline_run,
@@ -375,6 +393,14 @@ def _execute_step_command_body(
             ),
             step_key=single_step_key,
         )
+
+        location_name = (
+            pipeline_run.external_pipeline_origin.location_name
+            if pipeline_run.external_pipeline_origin
+            else None
+        )
+
+        instance.inject_secrets_into_environment(location_name)
 
         if args.should_verify_step:
             success = verify_step(
@@ -557,6 +583,28 @@ def _execute_step_command_body(
     "code from this server.",
     envvar="DAGSTER_CONTAINER_CONTEXT",
 )
+@click.option(
+    "--load-secrets",
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Whether to load secrets from the instance and inject them into the environment.",
+    envvar="DAGSTER_LOAD_SECRETS",
+)
+@click.option(
+    "--location-name",
+    type=click.STRING,
+    required=False,
+    help="Name of the code location this server corresponds to.",
+    envvar="DAGSTER_LOCATION_NAME",
+)
+@click.option(
+    "--instance-ref",
+    type=click.STRING,
+    required=False,
+    help="[INTERNAL] Serialized InstanceRef to use for accessing the instance",
+    envvar="DAGSTER_INSTANCE_REF",
+)
 def grpc_command(
     port=None,
     socket=None,
@@ -572,6 +620,9 @@ def grpc_command(
     use_python_environment_entry_point=False,
     container_image=None,
     container_context=None,
+    location_name=None,
+    instance_ref=None,
+    load_secrets=False,
     **kwargs,
 ):
     from dagster._core.test_utils import mock_system_timezone
@@ -613,11 +664,18 @@ def grpc_command(
             package_name=kwargs["package_name"],
         )
 
-    with (
-        mock_system_timezone(override_system_timezone)
-        if override_system_timezone
-        else seven.nullcontext()
-    ):
+    with ExitStack() as exit_stack:
+
+        if override_system_timezone:
+            exit_stack.enter_context(mock_system_timezone(override_system_timezone))
+
+        instance = None
+        if load_secrets:
+            with DagsterInstance.from_ref(
+                instance_ref
+            ) if instance_ref else DagsterInstance.get() as instance:
+                instance.inject_secrets_into_environment(location_name)
+
         server = DagsterGrpcServer(
             port=port,
             socket=socket,
