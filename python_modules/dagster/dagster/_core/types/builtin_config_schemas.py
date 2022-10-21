@@ -1,3 +1,4 @@
+import collections
 import pickle
 import warnings
 
@@ -32,6 +33,15 @@ def define_typed_input_schema_dict(value_config_type):
 
 
 def load_type_input_schema_dict(value):
+    input_schema_dict_format_str = "{'value'|'json'|'pickle': <actual_value>}"
+    if not isinstance(value, collections.Mapping):
+        check.failed(
+            f"Expected input schema dict, but instead received a value of type {type(value)}. An input schema dict is of the format {input_schema_dict_format_str}"
+        )
+    if len(value) > 1 or ("value" not in value and "json" not in value and "pickle" not in value):
+        check.failed(
+            f"Malformed input schema dict. An input schema dict should be of the format {input_schema_dict_format_str}"
+        )
     file_type, file_options = list(value.items())[0]
     if file_type == "value":
         return file_options
