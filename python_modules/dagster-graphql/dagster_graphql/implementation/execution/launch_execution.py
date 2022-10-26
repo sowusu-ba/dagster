@@ -12,20 +12,22 @@ from .run_lifecycle import create_valid_pipeline_run
 
 
 @capture_error
-def launch_pipeline_reexecution(graphene_info, execution_params):
+def launch_pipeline_reexecution(graphene_info, execution_params: ExecutionParams):
     return _launch_pipeline_execution(graphene_info, execution_params, is_reexecuted=True)
 
 
 @capture_error
-def launch_pipeline_execution(graphene_info, execution_params):
+def launch_pipeline_execution(graphene_info, execution_params: ExecutionParams):
+    print("LAUNCH PIPELINE EXECUTION", execution_params)
     return _launch_pipeline_execution(graphene_info, execution_params)
 
 
-def do_launch(graphene_info, execution_params, is_reexecuted=False):
+def do_launch(graphene_info, execution_params: ExecutionParams, is_reexecuted: bool = False):
     check.inst_param(graphene_info, "graphene_info", ResolveInfo)
     check.inst_param(execution_params, "execution_params", ExecutionParams)
     check.bool_param(is_reexecuted, "is_reexecuted")
 
+    print("LAUNCHING WITH EXECUTION PARAMS", execution_params)
     if is_reexecuted:
         # required fields for re-execution
         execution_metadata = check.inst_param(
@@ -42,7 +44,9 @@ def do_launch(graphene_info, execution_params, is_reexecuted=False):
     )
 
 
-def _launch_pipeline_execution(graphene_info, execution_params, is_reexecuted=False):
+def _launch_pipeline_execution(
+    graphene_info, execution_params: ExecutionParams, is_reexecuted: bool = False
+):
     from ...schema.pipelines.pipeline import GrapheneRun
     from ...schema.runs import GrapheneLaunchRunSuccess
 
@@ -69,7 +73,7 @@ def launch_reexecution_from_parent_run(graphene_info, parent_run_id: str, strate
     check.str_param(strategy, "strategy")
 
     instance: DagsterInstance = graphene_info.context.instance
-    parent_run = instance.get_run_by_id(parent_run_id)
+    parent_run = check.not_none(instance.get_run_by_id(parent_run_id))
     check.invariant(parent_run, "Could not find parent run with id: %s" % parent_run_id)
 
     selector = PipelineSelector(
