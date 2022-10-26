@@ -169,18 +169,58 @@ airbyte_assets = with_resources(
 
 ---
 
-## Step 3: Scheduling Airbyte syncs
+## Step 3: Adding downstream assets
 
-Once you have Airbyte assets, you can define a job that runs some or all of these assets on a schedule, triggering the underlying Airbyte sync:
+<Note>
+  Looking to orchestrate Airbyte with dbt? Check out our{" "}
+  <a href="https://github.com/dagster-io/dagster/tree/master/examples/assets_modern_data_stack">
+    Modern Data Stack example
+  </a>{" "}
+  and our <a href="/integrations/dbt">dbt integration docs</a>.
+</Note>
+
+Once you have loaded your Airbyte assets into Dagster, you can create assets which depend on them. These can be other assets pulled in from external sources such as [dbt](/integrations/dbt) or assets defined in Python code.
+
+In this case, we have an Airbyte connection which is storing data in the `stargazers` table in our Snowflake warehouse. We specify the output [IO manager](/concepts/io-management/io-managers) to tell downstream assets how to retreive the data.
+
+```python startafter=start_add_downstream_assets endbefore=end_add_downstream_assets file=/integrations/airbyte/airbyte.py dedent=4
+from dagster import AssetKey, asset, repository, with_resources
+from dagster_airbyte import load_assets_from_airbyte_instance
+
+airbyte_assets = load_assets_from_airbyte_instance(
+    airbyte_instance,
+    io_manager_key="snowflake_io_manager",
+)
+
+@asset
+def stargazers_per_day(stargazers):
+    pass
+
+@repository
+def my_repo():
+    return [
+        with_resources(
+            [airbyte_assets, stargazers_per_day],
+            {"snowflake_io_manager": snowflake_io_manager},
+        )
+    ]
+```
+
+---
+
+## Step 4: Scheduling Airbyte syncs
+
+Once you have Airbyte assets, you can define a job that runs some or all of these assets on a schedule, triggering the underlying Airbyte sync.
 
 ```python startafter=start_schedule_assets endbefore=end_schedule_assets file=/integrations/airbyte/airbyte.py dedent=4
 from dagster import ScheduleDefinition, define_asset_job, repository, AssetSelection
 
+# materialize all assets in the repository
 run_everything_job = define_asset_job("run_everything", selection="*")
 
-# only my_airbyte_connection
-run_specific_connection_job = define_asset_job(
-    "run_specific_connection", AssetSelection.groups("my_airbyte_connection")
+# only run my_airbyte_connection and downstream assets
+my_etl_job = define_asset_job(
+    "my_etl_job", AssetSelection.groups("my_airbyte_connection").downstream()
 )
 
 @repository
@@ -188,7 +228,7 @@ def my_repo():
     return [
         airbyte_assets,
         ScheduleDefinition(
-            job=run_specific_connection_job,
+            job=my_etl_job,
             cron_schedule="@daily",
         ),
         ScheduleDefinition(
