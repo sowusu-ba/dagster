@@ -115,7 +115,8 @@ def scope_add_downstream_assets():
     snowflake_io_manager = ...
 
     # start_add_downstream_assets
-    from dagster import AssetKey, asset, repository, with_resources
+    import json
+    from dagster import asset, repository, with_resources
     from dagster_airbyte import load_assets_from_airbyte_instance
 
     airbyte_assets = load_assets_from_airbyte_instance(
@@ -124,14 +125,15 @@ def scope_add_downstream_assets():
     )
 
     @asset
-    def stargazers_per_day(stargazers):
-        pass
+    def stargazers_file(stargazers):
+        with open("stargazers.json", "w", encoding="utf8") as f:
+            f.write(json.dumps(stargazers, indent=2))
 
     @repository
     def my_repo():
         return [
             with_resources(
-                [airbyte_assets, stargazers_per_day],
+                [airbyte_assets, stargazers_file],
                 {"snowflake_io_manager": snowflake_io_manager},
             )
         ]
