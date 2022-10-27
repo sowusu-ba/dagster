@@ -39,6 +39,7 @@ from ..partition import PartitionsDefinition
 from ..resource_definition import ResourceDefinition
 from ..utils import DEFAULT_IO_MANAGER_KEY, NoValueSentinel
 
+
 @overload
 def asset(
     compute_fn: Callable,
