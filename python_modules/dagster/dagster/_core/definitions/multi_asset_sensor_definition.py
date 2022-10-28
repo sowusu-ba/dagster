@@ -266,6 +266,7 @@ class MultiAssetSensorEvaluationContext(SensorEvaluationContext):
             cursor=cursor,
             repository_name=repository_name,
             instance=instance,
+            repository_def=repository_def,
         )
 
     def _cache_initial_unconsumed_events(self) -> None:
@@ -339,20 +340,20 @@ class MultiAssetSensorEvaluationContext(SensorEvaluationContext):
             ]
         return partitions_to_fetch
 
-    def update_cursor_after_evaluation(self) -> None:
+    @property
+    def has_cursor_changed(self) -> bool:
+        return self._cursor_advance_state_mutation.has_advanced_records
+
+    def serialize_cursor(self) -> str:
         """Updates the cursor after the sensor evaluation function has been called. This method
         should be called at most once per evaluation.
         """
 
-        new_cursor = self._cursor_advance_state_mutation.get_cursor_with_advances(
-            self, self._unpacked_cursor
+        return json.dumps(
+            self._cursor_advance_state_mutation.get_cursor_with_advances(
+                self, self._unpacked_cursor
+            )
         )
-
-        if new_cursor != None:
-            # Cursor was not updated by this context object, so we do not need to update it
-            self._cursor = new_cursor
-            self._unpacked_cursor = MultiAssetSensorContextCursor(new_cursor, self)
-            self._cursor_advance_state_mutation = MultiAssetSensorCursorAdvances()
 
     @public
     def latest_materialization_records_by_key(
@@ -652,9 +653,10 @@ class MultiAssetSensorEvaluationContext(SensorEvaluationContext):
         )
 
     def _get_asset(self, asset_key: AssetKey, fn_name: str) -> AssetsDefinition:
-        repository_assets = (
-            self._repository_def._assets_defs_by_key  # pylint:disable=protected-access
-        )
+        from dagster._core.definitions.repository_definition import RepositoryDefinition
+
+        repo_def = cast(RepositoryDefinition, self._repository_def)
+        repository_assets = repo_def._assets_defs_by_key  # pylint:disable=protected-access
         if asset_key in self._assets_by_key:
             asset_def = self._assets_by_key[asset_key]
             if asset_def is None:
@@ -811,29 +813,23 @@ class MultiAssetSensorCursorAdvances:
                     materialization.storage_id
                 ] = materialization.partition_key
 
+    @property
+    def has_advanced_records(self) -> bool:
+        return len(self._advanced_record_ids_by_key) > 0
+
     def get_cursor_with_advances(
         self,
         context: MultiAssetSensorEvaluationContext,
         initial_cursor: MultiAssetSensorContextCursor,
-    ) -> Optional[str]:
+    ) -> Dict[str, MultiAssetSensorAssetCursorComponent]:
         """
         Given the multi asset sensor context and the cursor at the start of the tick,
         returns the cursor that should be used in the next tick.
-
-        If the cursor has not been updated, returns None
         """
-        if len(self._advanced_record_ids_by_key) == 0:
-            # No events marked as advanced
-            return None
-
-        return json.dumps(
-            {
-                str(asset_key): self.get_asset_cursor_with_advances(
-                    asset_key, context, initial_cursor
-                )
-                for asset_key in context.asset_keys
-            }
-        )
+        return {
+            str(asset_key): self.get_asset_cursor_with_advances(asset_key, context, initial_cursor)
+            for asset_key in context.asset_keys
+        }
 
     def get_asset_cursor_with_advances(
         self,
@@ -1121,7 +1117,19 @@ class MultiAssetSensorDefinition(SensorDefinition):
 
         def _wrap_asset_fn(materialization_fn):
             def _fn(context):
-                result = materialization_fn(context)
+                multi_asset_sensor_context = MultiAssetSensorEvaluationContext(
+                    instance_ref=context.instance_ref,
+                    last_completion_time=context.last_completion_time,
+                    last_run_key=context.last_run_key,
+                    cursor=context.cursor,
+                    repository_name=context.repository_def.name,
+                    repository_def=context.repository_def,
+                    asset_selection=self._asset_selection,
+                    asset_keys=self._asset_keys,
+                    instance=context.instance,
+                )
+
+                result = materialization_fn(multi_asset_sensor_context)
                 if result is None:
                     return
 
@@ -1143,7 +1151,7 @@ class MultiAssetSensorDefinition(SensorDefinition):
 
                 if (
                     runs_yielded
-                    and not context._cursor_has_been_updated  # pylint: disable=protected-access
+                    and not multi_asset_sensor_context._cursor_has_been_updated  # pylint: disable=protected-access
                 ):
                     raise DagsterInvalidDefinitionError(
                         "Asset materializations have been handled in this sensor, "
@@ -1152,7 +1160,8 @@ class MultiAssetSensorDefinition(SensorDefinition):
                         "context.advance_all_cursors to update the cursor."
                     )
 
-                context.update_cursor_after_evaluation()
+                if multi_asset_sensor_context.has_cursor_changed:
+                    context.update_cursor(multi_asset_sensor_context.serialize_cursor())
 
             return _fn
 
