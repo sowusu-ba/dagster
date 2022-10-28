@@ -35,7 +35,7 @@ import {AssetEdges} from './AssetEdges';
 import {AssetGraphJobSidebar} from './AssetGraphJobSidebar';
 import {AssetGroupNode} from './AssetGroupNode';
 import {AssetNode, AssetNodeMinimal} from './AssetNode';
-import {SourceAssetNode} from './ForeignNode';
+import {AssetNodeLink} from './ForeignNode';
 import {SidebarAssetInfo} from './SidebarAssetInfo';
 import {
   GraphData,
@@ -68,10 +68,10 @@ interface Props {
 export const MINIMAL_SCALE = 0.5;
 export const EXPERIMENTAL_SCALE = 0.1;
 
-const includeInAll = (
-  {isVersioned}: AssetNode,
-  liveData?: LiveDataForNode,
-) => (isVersioned && liveData ? liveData.currentLogicalVersion !== liveData.projectedLogicalVersion : true);
+const includeInAll = ({isVersioned}: AssetNode, liveData?: LiveDataForNode) =>
+  isVersioned && liveData
+    ? liveData.currentLogicalVersion !== liveData.projectedLogicalVersion
+    : true;
 
 export const AssetGraphExplorer: React.FC<Props> = (props) => {
   const {
@@ -368,12 +368,9 @@ export const AssetGraphExplorerWithData: React.FC<
                         }}
                         style={{overflow: 'visible'}}
                       >
-                        {false && (!graphNode || !graphNode.definition.opNames.length) ? (
-                          <SourceAssetNode
-                            assetKey={{path}}
-                            selected={selectedAssetValues.includes(path)}
-                          />
-                        ) : _scale < MINIMAL_SCALE ? (
+                        {!graphNode ? (
+                          <AssetNodeLink assetKey={{path}} />
+                        ) : scale < MINIMAL_SCALE ? (
                           <AssetNodeMinimal
                             definition={graphNode.definition}
                             selected={selectedGraphNodes.includes(graphNode)}
@@ -445,8 +442,7 @@ export const AssetGraphExplorerWithData: React.FC<
                   ? selectedGraphNodes.filter((a) => !a.definition.isSource)
                   : Object.values(assetGraphData.nodes).filter(
                       (a) =>
-                        !a.definition.isSource &&
-                        includeInAll(a.definition, liveDataByNode[a.id]),
+                        !a.definition.isSource && includeInAll(a.definition, liveDataByNode[a.id]),
                     )
                 ).map((n) => n.assetKey)}
                 preferredJobName={explorerPath.pipelineName}

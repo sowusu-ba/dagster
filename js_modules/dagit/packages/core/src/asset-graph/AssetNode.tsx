@@ -1,5 +1,5 @@
 import {gql} from '@apollo/client';
-import {Colors, Icon, Tooltip, FontFamily, Box, CaptionMono, Spinner} from '@dagster-io/ui';
+import {Colors, Icon, FontFamily, Box, CaptionMono, Spinner, Tooltip} from '@dagster-io/ui';
 import isEqual from 'lodash/isEqual';
 import React from 'react';
 import {Link} from 'react-router-dom';
@@ -16,7 +16,6 @@ import {markdownToPlaintext} from '../ui/markdownToPlaintext';
 import {LiveDataForNode} from './Utils';
 import {ASSET_NODE_ANNOTATIONS_MAX_WIDTH, ASSET_NODE_NAME_MAX_LENGTH} from './layout';
 import {AssetNodeFragment} from './types/AssetNodeFragment';
-import { VERSION } from 'lodash';
 
 const MISSING_LIVE_DATA = {
   unstartedRunIds: [],
@@ -32,11 +31,11 @@ const MISSING_LIVE_DATA = {
 
 const VERSION_COLORS = {
   sourceBackground: Colors.Gray50,
-  sourceText: undefined,
+  sourceText: Colors.Gray300,
   staleBackground: Colors.Yellow50,
   okBackground: Colors.Green200,
   staleText: Colors.Yellow700,
-  okText: undefined,
+  okText: Colors.Blue200,
 };
 
 export const AssetNode: React.FC<{
@@ -54,30 +53,42 @@ export const AssetNode: React.FC<{
 
   const displayName = definition.assetKey.path[definition.assetKey.path.length - 1];
 
-  const {lastMaterialization, lastObservation, currentLogicalVersion, projectedLogicalVersion, computeStatus} = liveData || MISSING_LIVE_DATA;
-  const isStale = !!(!definition.isSource && projectedLogicalVersion &&
-              currentLogicalVersion !== projectedLogicalVersion);
+  const {
+    lastMaterialization,
+    lastObservation,
+    currentLogicalVersion,
+    projectedLogicalVersion,
+    computeStatus,
+  } = liveData || MISSING_LIVE_DATA;
+
+  const {isSource, isVersioned} = definition;
+  const isStale = !!(
+    !isSource &&
+    projectedLogicalVersion &&
+    currentLogicalVersion !== projectedLogicalVersion
+  );
 
   return (
     <AssetInsetForHoverEffect>
       <AssetNodeContainer $selected={selected}>
-        <AssetNodeBox $selected={selected}>
-          <Name $isSource={definition.isSource}>
+        <AssetNodeBox $selected={selected} $isSource={isSource}>
+          <Name $isSource={isSource}>
             <span style={{marginTop: 1}}>
-              <Icon name={definition.isSource ? "source_asset" : "asset"} />
+              <Icon name={isSource ? 'source_asset' : 'asset'} />
             </span>
-            <div style={{overflow: 'hidden', textOverflow: 'ellipsis', marginTop: -1}}>
+            <div style={{overflow: 'hidden', textOverflow: 'ellipsis'}}>
               {withMiddleTruncation(displayName, {
                 maxLength: ASSET_NODE_NAME_MAX_LENGTH,
               })}
             </div>
             <div style={{flex: 1}} />
-            {definition.isVersioned ?
-              <VersionedBadge $isSource={definition.isSource} $isStale={isStale}>V</VersionedBadge> : (
+            {isVersioned ? (
+              <VersionedBadge isSource={isSource} isStale={isStale} />
+            ) : (
               <div style={{maxWidth: ASSET_NODE_ANNOTATIONS_MAX_WIDTH}}>
                 <ComputeStatusNotice computeStatus={computeStatus} />
               </div>
-              )}
+            )}
           </Name>
           {definition.description && !inAssetCatalog && (
             <Description>{markdownToPlaintext(definition.description).split('\n')[0]}</Description>
@@ -96,36 +107,33 @@ export const AssetNode: React.FC<{
             </Description>
           )}
 
-          {(definition.isSource && !definition.isVersioned) ? null :
-
-          <Stats>
-
-            {definition.isSource ? (
-              lastObservation ? (
-                <StatsRow>
-                  <span>Observed</span>
-                  <CaptionMono style={{textAlign: 'right'}}>
-                    <AssetRunLink
-                      runId={lastObservation.runId}
-                      event={{stepKey, timestamp: lastObservation.timestamp}}
-                    >
-                      <TimestampDisplay
-                        timestamp={Number(lastObservation.timestamp) / 1000}
-                        timeFormat={{showSeconds: false, showTimezone: false}}
-                      />
-                    </AssetRunLink>
-                  </CaptionMono>
-                </StatsRow>
-              ) : (
-                <>
+          {isSource && !isVersioned ? null : (
+            <Stats>
+              {isSource ? (
+                lastObservation ? (
                   <StatsRow>
                     <span>Observed</span>
-                    <span>–</span>
+                    <CaptionMono style={{textAlign: 'right'}}>
+                      <AssetRunLink
+                        runId={lastObservation.runId}
+                        event={{stepKey, timestamp: lastObservation.timestamp}}
+                      >
+                        <TimestampDisplay
+                          timestamp={Number(lastObservation.timestamp) / 1000}
+                          timeFormat={{showSeconds: false, showTimezone: false}}
+                        />
+                      </AssetRunLink>
+                    </CaptionMono>
                   </StatsRow>
-                </>
-              )
-            ) : (
-              lastMaterialization ? (
+                ) : (
+                  <>
+                    <StatsRow>
+                      <span>Observed</span>
+                      <span>–</span>
+                    </StatsRow>
+                  </>
+                )
+              ) : lastMaterialization ? (
                 <StatsRow>
                   <span>Materialized</span>
                   <CaptionMono style={{textAlign: 'right'}}>
@@ -147,45 +155,52 @@ export const AssetNode: React.FC<{
                     <span>–</span>
                   </StatsRow>
                 </>
-              )
-            )}
+              )}
 
-            {!definition.isSource && (
-              <>
-                <StatsRow>
-                  <span>Latest&nbsp;Run</span>
-                  <CaptionMono style={{textAlign: 'right'}}>
-                    <AssetLatestRunWithNotices liveData={liveData} />
-                  </CaptionMono>
-                </StatsRow>
-                {definition.opVersion && definition.opVersion !== 'DEFAULT' && (
+              {!isSource && (
+                <>
                   <StatsRow>
-                    <span>Code Version</span>
+                    <span>Latest&nbsp;Run</span>
                     <CaptionMono style={{textAlign: 'right'}}>
-                      {definition.opVersion}
+                      <AssetLatestRunWithNotices liveData={liveData} />
                     </CaptionMono>
                   </StatsRow>
-                )}
-              </>
-            )}
-              {definition.isVersioned && currentLogicalVersion && (definition.isSource || lastMaterialization) && (
+                  {definition.opVersion && definition.opVersion !== 'DEFAULT' && (
+                    <StatsRow>
+                      <span>Code Version</span>
+                      <CaptionMono style={{textAlign: 'right'}}>{definition.opVersion}</CaptionMono>
+                    </StatsRow>
+                  )}
+                </>
+              )}
+              {isVersioned && currentLogicalVersion && (isSource || lastMaterialization) && (
                 <StatsRow>
-                  <span style={{color: isStale ? VERSION_COLORS.staleText : VERSION_COLORS.okText}}>Logical Version</span>
+                  <span style={{color: isStale ? VERSION_COLORS.staleText : VERSION_COLORS.okText}}>
+                    Logical Version
+                  </span>
                   <CaptionMono style={{textAlign: 'right'}}>
-                    <LogicalVersion isSource={definition.isSource} isStale={isStale} value={currentLogicalVersion} />
+                    <LogicalVersion
+                      isSource={isSource}
+                      isStale={isStale}
+                      value={currentLogicalVersion}
+                    />
                   </CaptionMono>
                 </StatsRow>
               )}
               {isStale && lastMaterialization && projectedLogicalVersion && (
-                  <StatsRow>
-                    <span style={{color: VERSION_COLORS.staleText}}>Projected Logical Version</span>
-                    <CaptionMono style={{textAlign: 'right'}}>
-                      <LogicalVersion isSource={definition.isSource} isStale={isStale} value={projectedLogicalVersion} />
-                    </CaptionMono>
-                  </StatsRow>
-                )}
-          </Stats>
-          }
+                <StatsRow>
+                  <span style={{color: VERSION_COLORS.staleText}}>Projected Logical Version</span>
+                  <CaptionMono style={{textAlign: 'right'}}>
+                    <LogicalVersion
+                      isSource={isSource}
+                      isStale={isStale}
+                      value={projectedLogicalVersion}
+                    />
+                  </CaptionMono>
+                </StatsRow>
+              )}
+            </Stats>
+          )}
           {definition.computeKind && (
             <OpTags
               minified={false}
@@ -212,13 +227,14 @@ export const AssetNodeMinimal: React.FC<{
   selected: boolean;
   definition: AssetNodeFragment;
 }> = ({selected, definition}) => {
-  const displayName = definition.assetKey.path[definition.assetKey.path.length - 1];
+  const {isSource, assetKey} = definition;
+  const displayName = assetKey.path[assetKey.path.length - 1];
 
   return (
     <AssetInsetForHoverEffect>
       <MinimalAssetNodeContainer $selected={selected}>
-        <MinimalAssetNodeBox $selected={selected}>
-          <MinimalName style={{fontSize: 28}} $isSource={definition.isSource}>
+        <MinimalAssetNodeBox $selected={selected} $isSource={isSource}>
+          <MinimalName style={{fontSize: 30}} $isSource={isSource}>
             {withMiddleTruncation(displayName, {maxLength: 17})}
           </MinimalName>
         </MinimalAssetNodeBox>
@@ -277,18 +293,12 @@ export const ASSET_NODE_FRAGMENT = gql`
     description
     computeKind
     isSource
+    isVersioned
     assetKey {
       path
     }
-    isVersioned
   }
 `;
-
-const BoxColors = {
-  Divider: 'rgba(219, 219, 244, 1)',
-  Description: 'rgba(245, 245, 250, 1)',
-  Stats: 'rgba(236, 236, 248, 1)',
-};
 
 const AssetInsetForHoverEffect = styled.div`
   padding: 10px 4px 2px 4px;
@@ -296,28 +306,28 @@ const AssetInsetForHoverEffect = styled.div`
 `;
 
 export const AssetNodeContainer = styled.div<{$selected: boolean}>`
-  outline: ${(p) => (p.$selected ? `2px dashed ${NodeHighlightColors.Border}` : 'none')};
-  border-radius: 6px;
-  outline-offset: -1px;
-  background: ${(p) => (p.$selected ? NodeHighlightColors.Background : 'white')};
   padding: 4px;
 `;
 
-export const AssetNodeBox = styled.div<{$selected: boolean}>`
-  border: 2px solid ${(p) => (p.$selected ? Colors.Blue500 : Colors.Blue200)};
-  background: ${BoxColors.Stats};
+export const AssetNodeBox = styled.div<{$isSource: boolean; $selected: boolean}>`
+  ${(p) =>
+    p.$isSource
+      ? `border: 2px dashed ${p.$selected ? Colors.Gray500 : Colors.Gray300};`
+      : `border: 2px solid ${p.$selected ? Colors.Blue500 : Colors.Blue200};`}
+
+  background: ${Colors.White};
   border-radius: 5px;
   position: relative;
   &:hover {
-    box-shadow: ${Colors.Blue200} inset 0px 0px 0px 1px, rgba(0, 0, 0, 0.12) 0px 2px 12px 0px;
+    box-shadow: rgba(0, 0, 0, 0.12) 0px 2px 12px 0px;
   }
 `;
 
 const Name = styled.div<{$isSource: boolean}>`
   /** Keep in sync with DISPLAY_NAME_PX_PER_CHAR */
   display: flex;
-  padding: 4px 6px;
-  background: ${(p) => p.$isSource ? Colors.Gray200 : Colors.White};
+  padding: 3px 6px;
+  background: ${(p) => (p.$isSource ? Colors.Gray100 : Colors.Blue50)};
   font-family: ${FontFamily.monospace};
   border-top-left-radius: 5px;
   border-top-right-radius: 5px;
@@ -326,6 +336,7 @@ const Name = styled.div<{$isSource: boolean}>`
 `;
 
 const MinimalAssetNodeContainer = styled(AssetNodeContainer)`
+  outline: ${(p) => (p.$selected ? `2px dashed ${NodeHighlightColors.Border}` : 'none')};
   border-radius: 12px;
   outline-offset: 2px;
   outline-width: 4px;
@@ -334,11 +345,15 @@ const MinimalAssetNodeContainer = styled(AssetNodeContainer)`
 
 const MinimalAssetNodeBox = styled(AssetNodeBox)`
   background: ${Colors.White};
-  border: 4px solid ${Colors.Blue200};
+  ${(p) =>
+    p.$isSource
+      ? `border: 5px dashed ${p.$selected ? Colors.Gray500 : Colors.Gray300};`
+      : `border: 5px solid ${p.$selected ? Colors.Blue500 : Colors.Blue200};`}
   border-radius: 10px;
   position: relative;
   padding: 4px;
   height: 100%;
+  min-height: 46px;
 `;
 
 const MinimalName = styled(Name)`
@@ -352,29 +367,44 @@ const MinimalName = styled(Name)`
 `;
 
 const Description = styled.div`
-  background: ${BoxColors.Description};
   padding: 4px 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-top: 1px solid ${BoxColors.Divider};
+  color: ${Colors.Gray700};
+  border-top: 1px solid ${Colors.Blue50};
   font-size: 12px;
 `;
 
-export const VersionedBadge = styled.div<{$isStale: boolean, $isSource: boolean}>`
-  /** Keep in sync with DISPLAY_NAME_PX_PER_CHAR */
-  padding: 2px 5px;
-  background: ${(p) => p.$isSource ? VERSION_COLORS.sourceBackground : p.$isStale ? VERSION_COLORS.staleBackground : VERSION_COLORS.okBackground};
-  color: ${(p) => p.$isStale ? VERSION_COLORS.staleText : VERSION_COLORS.okText};
-  font-family: ${FontFamily.monospace};
-  border-radius: 5px;
-  font-weight: 600;
-`;
+export const VersionedBadge: React.FC<{isStale: boolean; isSource: boolean}> = ({
+  isStale,
+  isSource,
+}) => (
+  <svg
+    width="16px"
+    height="16px"
+    viewBox="0 0 16 16"
+    version="1.1"
+    style={{alignSelf: 'center'}}
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <g
+      fill={
+        isSource
+          ? VERSION_COLORS.sourceText
+          : isStale
+          ? VERSION_COLORS.staleText
+          : VERSION_COLORS.okText
+      }
+    >
+      <path d="M8,0 C12.418278,-8.11624501e-16 16,3.581722 16,8 C16,12.418278 12.418278,16 8,16 C3.581722,16 5.41083001e-16,12.418278 0,8 C-5.41083001e-16,3.581722 3.581722,8.11624501e-16 8,0 Z M10.4147943,3.71254738 L7.999,10.151 L5.58520574,3.71254738 L3.71254738,4.41479426 L7.06367082,13.3511234 L8.93632918,13.3511234 L12.2874526,4.41479426 L10.4147943,3.71254738 Z" />
+    </g>
+  </svg>
+);
 
 const Stats = styled.div`
-  background: ${BoxColors.Stats};
   padding: 4px 8px;
-  border-top: 1px solid ${BoxColors.Divider};
+  border-top: 1px solid ${Colors.Blue50};
   font-size: 12px;
   line-height: 20px;
 `;
@@ -384,7 +414,7 @@ const StatsRow = styled.div`
   justify-content: space-between;
   min-height: 18px;
   & > span {
-    color: ${Colors.Gray600};
+    color: ${Colors.Gray700};
   }
 `;
 
@@ -401,9 +431,14 @@ const UpstreamNotice = styled.div`
   border-top-right-radius: 3px;
 `;
 
-const LogicalVersionTag = styled.div<{$isSource: boolean, $isStale: boolean}>`
-  background: ${(p) => p.$isSource ? VERSION_COLORS.sourceBackground : p.$isStale ? VERSION_COLORS.staleBackground : VERSION_COLORS.okBackground};
-  color: ${(p) => p.$isStale ? VERSION_COLORS.staleText : VERSION_COLORS.okText};
+const LogicalVersionTag = styled.div<{$isSource: boolean; $isStale: boolean}>`
+  background: ${(p) =>
+    p.$isSource
+      ? VERSION_COLORS.sourceBackground
+      : p.$isStale
+      ? VERSION_COLORS.staleBackground
+      : VERSION_COLORS.okBackground};
+  color: ${(p) => (p.$isStale ? VERSION_COLORS.staleText : VERSION_COLORS.okText)};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -418,7 +453,9 @@ const LogicalVersion: React.FC<{
 }> = ({value, isStale, isSource}) => (
   <Box flex={{gap: 4, alignItems: 'center'}}>
     <Tooltip content={value}>
-      <LogicalVersionTag $isSource={isSource} $isStale={isStale}>{value}</LogicalVersionTag>
+      <LogicalVersionTag $isSource={isSource} $isStale={isStale}>
+        {value}
+      </LogicalVersionTag>
     </Tooltip>
   </Box>
 );

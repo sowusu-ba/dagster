@@ -45,8 +45,6 @@ const GROUP_NODE_PREFIX = 'group__';
 export const layoutAssetGraph = (graphData: GraphData): AssetGraphLayout => {
   const g = new dagre.graphlib.Graph({compound: true});
 
-  console.log("COMPUTING LAYOUT");
-
   g.setGraph({
     rankdir: 'TB',
     marginx: opts.margin,
@@ -99,7 +97,7 @@ export const layoutAssetGraph = (graphData: GraphData): AssetGraphLayout => {
     }
   });
 
-  const foreignNodes = {};
+  const linksToAssetsOutsideGraphedSet = {};
 
   // Add the edges to the graph, and accumulate a set of "foreign nodes" (for which
   // we have an inbound/outbound edge, but we don't have the `node` in the graphData).
@@ -116,16 +114,16 @@ export const layoutAssetGraph = (graphData: GraphData): AssetGraphLayout => {
       g.setEdge({v: upstreamId, w: downstreamId}, {weight: 1});
 
       if (!shouldRender(graphData.nodes[downstreamId])) {
-        foreignNodes[downstreamId] = true;
+        linksToAssetsOutsideGraphedSet[downstreamId] = true;
       } else if (!shouldRender(graphData.nodes[upstreamId])) {
-        foreignNodes[upstreamId] = true;
+        linksToAssetsOutsideGraphedSet[upstreamId] = true;
       }
     });
   });
 
-  // Add all the foreign nodes to the graph
-  Object.keys(foreignNodes).forEach((id) => {
-    g.setNode(id, getSourceAssetNodeDimensions(id));
+  // Add all the link nodes to the graph
+  Object.keys(linksToAssetsOutsideGraphedSet).forEach((id) => {
+    g.setNode(id, getAssetLinkDimensions(id));
   });
 
   dagre.layout(g);
@@ -201,9 +199,9 @@ export const layoutAssetGraph = (graphData: GraphData): AssetGraphLayout => {
   };
 };
 
-export const getSourceAssetNodeDimensions = (id: string) => {
+export const getAssetLinkDimensions = (id: string) => {
   const path = JSON.parse(id);
-  return {width: displayNameForAssetKey({path}).length * 8 + 30, height: 30};
+  return {width: displayNameForAssetKey({path}).length * 8 + 40, height: 40};
 };
 
 export const padBounds = (a: IBounds, padding: {x: number; top: number; bottom: number}) => {
@@ -237,27 +235,37 @@ export const assetNameMaxlengthForWidth = (width: number) => {
 export const getAssetNodeDimensions = (def: {
   assetKey: {path: string[]};
   opNames: string[];
+  isSource: boolean;
+  isVersioned: boolean;
   graphName: string | null;
   description?: string | null;
 }) => {
-  let height = 100;
-  if (def.description) {
-    height += 25;
-  }
   const computeName = def.graphName || def.opNames[0] || null;
   const displayName = def.assetKey.path[def.assetKey.path.length - 1];
+  const width =
+    Math.max(
+      200,
+      Math.min(ASSET_NODE_NAME_MAX_LENGTH, displayName.length) * DISPLAY_NAME_PX_PER_CHAR,
+    ) +
+    ASSET_NODE_ICON_WIDTH +
+    ASSET_NODE_ANNOTATIONS_MAX_WIDTH;
 
-  if (computeName && displayName !== computeName) {
-    height += 25;
+  if (def.isSource && !def.isVersioned) {
+    return {width, height: 40};
+  } else {
+    let height = 35; // name
+
+    if (def.description) {
+      height += 25; // description shown
+    }
+    if (computeName && displayName !== computeName) {
+      height += 25; // op name shown
+    }
+    if (def.isSource) {
+      height += 36; // observed
+    } else {
+      height += 60; // last run + materialized
+    }
+    return {width, height};
   }
-  return {
-    width:
-      Math.max(
-        200,
-        Math.min(ASSET_NODE_NAME_MAX_LENGTH, displayName.length) * DISPLAY_NAME_PX_PER_CHAR,
-      ) +
-      ASSET_NODE_ICON_WIDTH +
-      ASSET_NODE_ANNOTATIONS_MAX_WIDTH,
-    height,
-  };
 };
