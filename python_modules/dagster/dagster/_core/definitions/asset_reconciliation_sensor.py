@@ -142,17 +142,6 @@ def _get_parent_updates(
     return parent_asset_event_records
 
 
-def parent_was_materialized_since_latest_planned_materialization():
-    """
-    Returns true if there exists a materialization of parent asset X that occurred after the latest
-    planned materialization of asset Y
-
-    Two different ways to know about the latest planned materialization of asset Y:
-    - It's recorded in the sensor cursor
-    - It's in the database
-    """
-
-
 def _make_sensor(
     selection: AssetSelection,
     name: str,
@@ -172,8 +161,6 @@ def _make_sensor(
     C at 5:16 w/ storage_id 3. When the sensor runs, the cursor for X will be set to (5:16, 3). This way, the next time
     the sensor runs, we can ignore the materializations prior to time 5:16 and storage_id 3. If asset A materialized
     again at 5:20 w/ storage_id 4, we would know that this materialization has not been incorporated into the child asset yet.
-
-    We keep track of timestamp and storage id so that we can support sharded event log storages (SqliteEventLogStorage).
     """
 
     def sensor_fn(context):
@@ -181,7 +168,7 @@ def _make_sensor(
             _deserialize_cursor_dict(context.cursor) if context.cursor else {}
         )
         run_requests, newly_consumed_storage_ids_by_asset_key_str = reconcile(
-            repository_def=context._repository_def,
+            repository_def=context._repository_def,  # pylint: disable=protected-access
             asset_selection=selection,
             wait_for_all_upstream=wait_for_all_upstream,
             wait_for_in_progress_runs=wait_for_in_progress_runs,
@@ -219,7 +206,7 @@ def reconcile(
     wait_for_all_upstream: bool,
     latest_consumed_storage_ids_by_asset_key_str: Mapping[str, int],
     run_tags: Mapping[str, str],
-) -> Union[Sequence[RunRequest], Mapping[str, int]]:
+) -> Tuple[Sequence[RunRequest], Mapping[str, int]]:
     asset_defs_by_key = repository_def._assets_defs_by_key  # pylint: disable=protected-access
     source_asset_defs_by_key = (
         repository_def.source_assets_by_key  # pylint: disable=protected-access
@@ -249,23 +236,6 @@ def reconcile(
             str(current_asset_key)
         )
 
-        # find out whether each parent asset partition was updated since the latest time we care
-        # about for that parent asset partition
-
-        # what's the latest time we care about? after the latest planned materialization for that asset partition
-
-        # how do we represent whether each parent asset partition was updated?
-        # maybe brute-forcing it isn't so bad? it will only be a large amount in the case of a backfill, which isn't so bad
-
-        # for each partition of the current asset, decide whether to materialize it based on
-        # the combination of partition mappings and AND vs. OR policy
-
-        # we implement this with a forward pass and a backward pass:
-        # - forward pass: find every downstream asset partition of every updated parent partition
-        # - backward pass (only needed if AND): find every upstream asset partition of the downstream asset partition discovered in the forward pass
-
-        # launch those partitions
-
         parent_update_records = _get_parent_updates(
             current_asset=current_asset_key,
             parent_assets=upstream[current_asset_key],
@@ -281,9 +251,7 @@ def reconcile(
         ):
             should_materialize.add(current_asset_key)
 
-            # get the cursor value by selecting the max of all the candidates. If we're using a
-            # sharded event log storage, compare timestamps, otherwise compare storage ids. See
-            # cursor_compare_idx for how this is determined
+            # get the cursor value by selecting the max of all the candidates.
             cursor_update_candidates = [
                 cursor_val for _, cursor_val in parent_update_records.values() if cursor_val
             ] + ([current_asset_cursor] if current_asset_cursor else [])
