@@ -399,8 +399,14 @@ type AssetNode {
     beforeTimestampMillis: String
     limit: Int
   ): [MaterializationEvent!]!
+  assetObservations(
+    partitions: [String]
+    beforeTimestampMillis: String
+    limit: Int
+  ): [ObservationEvent!]!
   computeKind: String
   configField: ConfigTypeField
+  currentLogicalVersion: String
   dependedBy: [AssetDependency!]!
   dependedByKeys: [AssetKey!]!
   dependencies: [AssetDependency!]!
@@ -409,6 +415,8 @@ type AssetNode {
   graphName: String
   groupName: String
   id: ID!
+  isSource: Boolean!
+  isVersioned: Boolean!
   jobNames: [String!]!
   jobs: [Pipeline!]!
   latestMaterializationByPartition(partitions: [String]): [MaterializationEvent]!
@@ -417,8 +425,10 @@ type AssetNode {
   op: SolidDefinition
   opName: String
   opNames: [String!]!
+  opVersion: String
   partitionKeys: [String!]!
   partitionDefinition: String
+  projectedLogicalVersion: String
   repository: Repository!
   requiredResources: [ResourceRequirement!]!
   type: DagsterType
@@ -3420,6 +3430,12 @@ type AssetMetadataEntry implements MetadataEntry {
   label: String!
   description: String
   assetKey: AssetKey!
+}
+
+type LogicalVersionMetadataEntry implements MetadataEntry {
+  label: String!
+  description: String
+  value: String!
 }
 
 scalar Cursor

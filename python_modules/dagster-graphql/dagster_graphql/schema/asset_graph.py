@@ -1,4 +1,3 @@
-from hashlib import sha256
 from typing import TYPE_CHECKING, List, Optional, Sequence, Union
 
 import graphene
@@ -17,7 +16,6 @@ from dagster_graphql.schema.solids import (
 
 from dagster import AssetKey
 from dagster import _check as check
-from dagster._core.definitions.logical_version import get_most_recent_logical_version
 from dagster._core.host_representation import ExternalRepository, RepositoryLocation
 from dagster._core.host_representation.external import ExternalPipeline
 from dagster._core.host_representation.external_data import (
@@ -380,10 +378,9 @@ class GrapheneAssetNode(graphene.ObjectType):
         if not self.external_asset_node.is_versioned:
             return None
         else:
-            return get_most_recent_logical_version(
+            return graphene_info.context.instance.get_most_recent_logical_version(
                 self._external_asset_node.asset_key,
                 self._external_asset_node.is_source,
-                graphene_info.context.instance,
             ).value
 
     def resolve_projectedLogicalVersion(self, _graphene_info) -> Optional[str]:
